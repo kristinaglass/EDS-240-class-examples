@@ -1,0 +1,143 @@
+---
+title: "lecture3.2"
+format: html
+editor: visual
+---
+
+## Setup
+
+```{r}
+#..........................load packages.........................
+library(tidyverse)
+library(chron)
+library(naniar)
+
+#.........................import data............................
+mko <- read_csv("https://portal.edirepository.org/nis/dataviewer?packageid=knb-lter-sbc.2007.17&entityid=02629ecc08a536972dec021f662428aa")
+```
+
+## Wrangle
+
+```{r}
+mko_clean <- mko %>% 
+  select(year, month, day, decimal_time, Temp_bot) %>% 
+  unite(date, year, month, day, sep = "-", remove = FALSE) %>% 
+  mutate(time = times(decimal_time)) %>% 
+  unite(date_time, date, time, sep = " ") %>% 
+   # coerce data types ----
+  mutate(date_time = as.POSIXct(date_time, "%Y-%m-%d %H:%M:%S", tz = "GMT"),
+         year = as.factor(year),
+         month = as.factor(month),
+         day = as.numeric(day)) %>% 
+  mutate(month_name = as.factor(month.name[month])) %>% 
+  replace_with_na(replace = list(Temp_bot = 9999))
+```
+
+## Histograms
+
+```{r}
+mko_clean %>% 
+  mutate(month_name = factor(month_name, levels = month.name)) %>% 
+  ggplot(aes(x = Temp_bot, fill = month_name)) +
+  geom_histogram()
+
+#small multiples
+mko_clean %>% 
+  mutate(month_name = factor(month_name, levels = month.name)) %>% 
+  ggplot(aes(x = Temp_bot)) +
+  geom_histogram() +
+  facet_wrap(~month_name)
+
+#fewer groups
+mko_clean %>% 
+  mutate(month_name = factor(month_name, levels = month.name)) %>% 
+  filter(month_name %in% c("April", "June", "October")) %>% 
+  ggplot(aes(x = Temp_bot, fill = month_name)) +
+  geom_histogram(positio = "identity", alpha = 0.5) +
+  scale_fill_manual(values = c("navy", "cyan4", "indianred"))
+```
+
+## Density Plots
+
+```{r}
+# density plots
+mko_clean %>% 
+  mutate(month_name = factor(month_name, levels = month.name)) %>% 
+  ggplot(aes(x = Temp_bot, fill = month_name)) +
+  geom_density(alpha = 0.5)
+
+#fewer groups
+mko_clean %>% 
+  mutate(month_name = factor(month_name, levels = month.name)) %>% 
+  filter(month_name %in% c("April", "June", "October")) %>% 
+  ggplot(aes(x = Temp_bot, fill = month_name)) +
+  geom_density(alpha = 0.5, adjust = 1/2) +
+  scale_fill_manual(values = c("navy", "cyan4", "indianred"))
+```
+
+```{r}
+# dummy data
+dummy_data <- data.frame(value = c(rnorm(n = 100, mean = 5),
+                                   rnorm(n = 200, mean = 10)),
+                         group = rep(c("A", "B"),
+                                     times = c(100, 200)))
+
+#hist -----
+ggplot(dummy_data, aes(x = value, fill = group)) +
+  geom_histogram(position = "identity", alpha = 0.7) +
+  geom_rug(aes(color = group), alpha = 0.7)
+
+# density
+ggplot(dummy_data, aes(x = value, fill = group)) +
+  geom_density(alpha = 0.7) +
+  geom_rug(aes(color = group), alpha = 0.7)
+```
+
+## Ridge Line Plot
+
+```{r}
+## ridgeline
+ggplot(mko_clean, aes(x = Temp_bot, y = month_name, fill = after_stat(x))) +
+  ggridges::geom_density_ridges_gradient(rel_min_height = 0.08) +
+  scale_y_discrete(limits = rev(month.name)) +
+  scale_fill_gradientn(colors = c("#2C5374","#849BB4", "#D9E7EC", "#EF8080", "#8B3A3A"))
+```
+
+## Box Plots
+
+```{r}
+ggplot(mko_clean, aes(x = month_name, y = Temp_bot, fill = month_name))+
+  geom_boxplot() +
+  scale_x_discrete(limits = rev(month.name)) +
+  coord_flip()+
+  gghighlight::gghighlight(month_name = "October") +
+  theme(legend.position = "none")
+```
+
+```{r}
+#jitter and dodge
+
+library(palmerpenguins)
+
+penguins %>% 
+  mutate(year = as.factor(year)) %>% 
+  ggplot(aes(x = species, y = body_mass_g, color = year)) +
+  geom_boxplot() +
+  geom_point(alpha = 0.5, position = position_jitterdodge(jitter.width = 0.2)) +
+  coord_flip()
+```
+
+## Violin Plot
+
+```{r}
+ggplot(mko_clean, aes(x = month_name, y = Temp_bot)) +
+  geom_violin() +
+  geom_boxplot(color = "grey", alpha = 0.5, width = 0.1, outlier.colour = "black")
+  scale_x_discrete(limits = rev(month.name)) +
+  coord_flip()
+  
+  #half and half plot
+ggplot(penguins, aes(x = species, y = bill_length_mm,
+                     fill = species))+
+  see::geom_violindot(size_dots = 5, alpha = 0.5)
+```

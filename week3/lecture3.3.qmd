@@ -1,0 +1,92 @@
+---
+title: "lecture3.3"
+format: html
+editor: visual
+---
+
+## 
+
+```{r}
+library(tidycensus)
+library(tidyverse)
+library(janitor)
+library(gghighlight)
+
+source(here::here("week3", "KEYS.R"))
+
+census_api_key("censusKEY", overwrite = TRUE, install = TRUE)
+lyme <- read_csv(here::here("week3", "data", "LD-Case-Counts-by-County-01-20.csv"))
+```
+
+## Wrangle
+
+```{r}
+#lyme data
+
+lyme_clean <- lyme %>% 
+  clean_names() %>% 
+  rename(county = ctyname, state = stname, status = ststatus) %>% 
+  pivot_longer(cols = 6:25,
+               names_to = "city_year",
+               values_to = "reported_cases") %>% 
+  mutate(year = str_remove(city_year, pattern = "cases"),
+         year = as.factor(year))
+
+#casesper state
+lyme_by_state <- lyme_clean %>% 
+  group_by(year, state) %>% 
+  summarise(total_cases = sum(reported_cases))
+
+us_state_pop <- get_estimates(geography = "state",
+                              product = "population",
+                              year = 2019) %>% 
+  filter(variable == "POP") %>% 
+  select(state = NAME, population = value)
+
+lyme_pop <- left_join(lyme_by_state, us_state_pop) %>% 
+  mutate(pop100k = population/100000) %>% 
+  mutate(cases_per100k = total_cases/pop100k)
+```
+
+```{r}
+lyme_pop |> 
+  filter(year %in% c(2010:2020)) |> 
+  ggplot(aes(x = year, y = cases_per100k, group = state)) + 
+  geom_line() +
+  gghighlight::gghighlight(state == "New Jersey")
+#highlight based conditional
+lyme_pop |> 
+  filter(year %in% c(2010:2020)) |> 
+  ggplot(aes(x = year, y = cases_per100k, group = state, color = state)) +  #group is always necessary for a lineplot
+  geom_line() +
+  gghighlight::gghighlight(max(cases_per100k) > 100)
+
+#aspect ratio
+lyme_pop %>% 
+  filter(year %in% c(2010:2020)) %>% 
+  filter(state == "Vermont") |> 
+  ggplot(aes(x = year, y = cases_per100k, group = state)) +
+  geom_line() +
+  #scale_y_continuous(breaks = seq(0, 190, by = 1)) + #creates very cluttered breaks
+  coord_fixed(ratio = 1/50) #1 is the default and squished all years together. Ratio of 1/20 (y/x gives back default ggplot of graph)
+```
+
+## Area plots
+
+```{r}
+# area chart 1 group
+lyme_pop %>% 
+  filter(year %in% c(2010:2020)) %>% 
+  filter(state == "Vermont") %>% 
+  ggplot(aes(x = year, y = cases_per100k, group = state)) +
+  scale_x_discrete(expand = c(0,0)) #fills from axis to axis
+  geom_area()
+  
+#stacked area chart
+lyme_pop %>% 
+  filter(year %in% c(2010:2020)) %>% 
+  filter(state %in% c("Maine", "Rhode Island", "New Hampshire", "Vermont")) %>% 
+  ggplot(aes(x = year, y = cases_per100k, group = state, fill = state)) +
+  geom_area(position = fill) +
+  scale_y_continuous(labels = scales::label_percent(scale = 100))
+```
